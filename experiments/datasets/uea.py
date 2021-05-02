@@ -70,7 +70,7 @@ valid_dataset_names = {'ArticularyWordRecognition',
                        'UWaveGestureLibrary'}
 
 
-def _process_data(dataset_name, missing_rate, intensity):
+def _process_data(dataset_name, missing_rate, missing_uniform=False, missing_unknown=False, timescale=1, intensity=False):
     # We begin by loading both the train and test data and using our own train/val/test split.
     # The reason for this is that (a) by default there is no val split and (b) the sizes of the train/test splits are
     # really janky by default. (e.g. LSST has 2459 training samples and 2466 test samples.)
@@ -79,7 +79,7 @@ def _process_data(dataset_name, missing_rate, intensity):
 
     base_filename = here / 'data' / 'UEA' / 'Multivariate_ts' / dataset_name / dataset_name
     train_X, train_y = sktime.utils.load_data.load_from_tsfile_to_dataframe(str(base_filename) + '_TRAIN.ts')
-    test_X, test_y = sktime.utils.load_data.load_from_tsfile_to_dataframe(str(base_filename) + '_TRAIN.ts')
+    test_X, test_y = sktime.utils.load_data.load_from_tsfile_to_dataframe(str(base_filename) + '_TEST.ts')
     train_X = train_X.to_numpy()
     test_X = test_X.to_numpy()
     X = np.concatenate((train_X, test_X), axis=0)
@@ -95,11 +95,23 @@ def _process_data(dataset_name, missing_rate, intensity):
     X = X.transpose(-1, -2)
     # X is now a tensor of shape (batch, length, channel)
     times = torch.linspace(0, X.size(1) - 1, X.size(1))
+    times = times * timescale
 
     generator = torch.Generator().manual_seed(56789)
-    for Xi in X:
-        removed_points = torch.randperm(X.size(1), generator=generator)[:int(X.size(1) * missing_rate)].sort().values
+    for i, Xi in enumerate(X):
+        if missing_uniform:
+            removed_points = torch.arange(int(maxlen*missing_rate)) / missing_rate
+            removed_points = removed_points.to(int)
+        else:
+            removed_points = torch.randperm(X.size(1), generator=generator)[:int(X.size(1) * missing_rate)].sort().values
         Xi[removed_points] = float('nan')
+        if missing_unknown:
+            kept_points = [p for p in range(maxlen) if p not in removed_points]
+            Xi[:] = torch.cat([Xi[kept_points], Xi[removed_points]], dim=0)
+            # yi[:] = torch.cat([yi[kept_points], yi[removed_points]], dim=0)
+            # if i == 0: breakpoint()
+            final_index[i] = 0 if len(kept_points) == 0 else len([p for p in kept_points if p <= final_index[i]])-1
+    # breakpoint()
 
     # Now fix the labels to be integers from 0 upwards
     targets = co.OrderedDict()
@@ -122,16 +134,26 @@ def _process_data(dataset_name, missing_rate, intensity):
             test_final_index, num_classes, input_channels)
 
 
-def get_data(dataset_name, missing_rate, device, intensity, batch_size):
+def get_data(dataset_name, missing_rate, missing_uniform, missing_unknown, timescale, intensity, device, batch_size):
     # We begin by loading both the train and test data and using our own train/val/test split.
     # The reason for this is that (a) by default there is no val split and (b) the sizes of the train/test splits are
     # really janky by default. (e.g. LSST has 2459 training samples and 2466 test samples.)
+
+    # missing_uniform: if True, subsample the data at a constant rate; otherwise take out random samples
+    # missing_unknown: if True, timestamps of subsampled data is not known; sequence is reshuffled to include them up front
 
     assert dataset_name in valid_dataset_names, "Must specify a valid dataset name."
 
     base_base_loc = here / 'processed_data'
     base_loc = base_base_loc / 'UEA'
-    loc = base_loc / (dataset_name + str(int(missing_rate * 100)) + ('_intensity' if intensity else ''))
+    loc = base_loc / (dataset_name + str(int(missing_rate * 100))
+            + ('_uniform' if missing_uniform else '')
+            + ('_unknown' if missing_unknown else '')
+            + ('_timescale' + str(timescale))
+            + ('_intensity' if intensity else ''))
+    # loc_train = loc / 'train'
+    # loc_val = loc / 'val'
+    # loc_test = loc / 'test'
     if os.path.exists(loc):
         tensors = common.load_data(loc)
         times = tensors['times']
@@ -155,7 +177,7 @@ def get_data(dataset_name, missing_rate, device, intensity, batch_size):
         if not os.path.exists(loc):
             os.mkdir(loc)
         (times, train_coeffs, val_coeffs, test_coeffs, train_y, val_y, test_y, train_final_index, val_final_index,
-         test_final_index, num_classes, input_channels) = _process_data(dataset_name, missing_rate, intensity)
+         test_final_index, num_classes, input_channels) = _process_data(dataset_name, missing_rate, missing_uniform, missing_unknown, timescale, intensity)
         common.save_data(loc,
                          times=times,
                          train_a=train_coeffs[0], train_b=train_coeffs[1], train_c=train_coeffs[2],
@@ -171,5 +193,21 @@ def get_data(dataset_name, missing_rate, device, intensity, batch_size):
                                                                                 train_final_index, val_final_index,
                                                                                 test_final_index, device,
                                                                                 num_workers=0, batch_size=batch_size)
+
+    return times, train_dataloader, val_dataloader, test_dataloader, num_classes, input_channels
+
+def get_data_shift(
+        dataset_name,
+        train_missing_rate, eval_missing_rate,
+        missing_uniform, missing_unknown,
+        train_timescale, eval_timescale,
+        intensity, device, batch_size,
+    ):
+    """ Option for different missing rates for train and test """
+    times, train_dataloader, _, _, num_classes, input_channels \
+            = get_data(dataset_name, train_missing_rate, missing_uniform, missing_unknown, train_timescale, intensity, device, batch_size)
+    times_, _, val_dataloader, test_dataloader, num_classes_, input_channels_ \
+            = get_data(dataset_name, eval_missing_rate, missing_uniform, missing_unknown, eval_timescale, intensity, device, batch_size)
+    # assert torch.eq(times, times_).all() and num_classes == num_classes_ and input_channels == input_channels_
 
     return times, train_dataloader, val_dataloader, test_dataloader, num_classes, input_channels

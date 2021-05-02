@@ -101,9 +101,9 @@ def wrap_data(times, train_coeffs, val_coeffs, test_coeffs, train_y, val_y, test
     val_dataset = torch.utils.data.TensorDataset(*val_coeffs, val_y, val_final_index)
     test_dataset = torch.utils.data.TensorDataset(*test_coeffs, test_y, test_final_index)
 
-    train_dataloader = dataloader(train_dataset, batch_size=batch_size, num_workers=num_workers)
-    val_dataloader = dataloader(val_dataset, batch_size=batch_size, num_workers=num_workers)
-    test_dataloader = dataloader(test_dataset, batch_size=batch_size, num_workers=num_workers)
+    train_dataloader = dataloader(train_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=True,)
+    val_dataloader   = dataloader(val_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False,)
+    test_dataloader  = dataloader(test_dataset, batch_size=batch_size, num_workers=num_workers, shuffle=False,)
 
     return times, train_dataloader, val_dataloader, test_dataloader
 

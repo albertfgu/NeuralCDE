@@ -105,7 +105,7 @@ class _SuppressAssertions:
 
 
 def _train_loop(train_dataloader, val_dataloader, model, times, optimizer, loss_fn, max_epochs, num_classes, device,
-                kwargs, step_mode):
+                kwargs, step_mode, schedule=False):
     model.train()
     best_model = model
     best_train_loss = math.inf
@@ -165,10 +165,11 @@ def _train_loop(train_dataloader, val_dataloader, model, times, optimizer, loss_
                              'Val accuracy: {:.3}'
                              ''.format(epoch, train_metrics.loss, train_metrics.accuracy, val_metrics.loss,
                                        val_metrics.accuracy))
-            if step_mode:
-                scheduler.step(train_metrics.loss)
-            else:
-                scheduler.step(val_metrics.accuracy)
+            if schedule:
+                if step_mode:
+                    scheduler.step(train_metrics.loss)
+                else:
+                    scheduler.step(val_metrics.accuracy)
             history.append(_AttrDict(epoch=epoch, train_metrics=train_metrics, val_metrics=val_metrics))
 
             if epoch > best_train_loss_epoch + plateau_terminate:
