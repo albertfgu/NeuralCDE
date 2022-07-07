@@ -13,8 +13,8 @@ def main(
     **kwargs):                                                               # kwargs passed on to cdeint
 
     params = {
-        'train hz': train_missing_rate,
-        'eval hz': eval_missing_rate,
+        'train hz': 1.-train_missing_rate,
+        'eval hz': 1.-eval_missing_rate,
         'uniform': missing_uniform,
         'timestamp': not missing_unknown,
         'train ts': train_timescale,

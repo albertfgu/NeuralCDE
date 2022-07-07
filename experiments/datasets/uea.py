@@ -2,7 +2,8 @@ import collections as co
 import numpy as np
 import os
 import pathlib
-import sktime.utils.load_data
+# import sktime.utils.load_data
+import sktime.utils.data_io
 import torch
 import urllib.request
 import zipfile
@@ -78,8 +79,8 @@ def _process_data(dataset_name, missing_rate, missing_uniform=False, missing_unk
     assert dataset_name in valid_dataset_names, "Must specify a valid dataset name."
 
     base_filename = here / 'data' / 'UEA' / 'Multivariate_ts' / dataset_name / dataset_name
-    train_X, train_y = sktime.utils.load_data.load_from_tsfile_to_dataframe(str(base_filename) + '_TRAIN.ts')
-    test_X, test_y = sktime.utils.load_data.load_from_tsfile_to_dataframe(str(base_filename) + '_TEST.ts')
+    train_X, train_y = sktime.utils.data_io.load_from_tsfile_to_dataframe(str(base_filename) + '_TRAIN.ts')
+    test_X, test_y = sktime.utils.data_io.load_from_tsfile_to_dataframe(str(base_filename) + '_TEST.ts')
     train_X = train_X.to_numpy()
     test_X = test_X.to_numpy()
     X = np.concatenate((train_X, test_X), axis=0)
@@ -155,6 +156,7 @@ def get_data(dataset_name, missing_rate, missing_uniform, missing_unknown, times
     # loc_val = loc / 'val'
     # loc_test = loc / 'test'
     if os.path.exists(loc):
+        print(loc)
         tensors = common.load_data(loc)
         times = tensors['times']
         train_coeffs = tensors['train_a'], tensors['train_b'], tensors['train_c'], tensors['train_d']
